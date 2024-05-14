@@ -85,7 +85,7 @@
          )
     (while node
       (treesit-induce-sparse-tree node pred process-fn)
-      (if (< (treesit-node-end node) (window-end))
+      (if (< (treesit-node-end node) (window-end nil t))
           (setq node (treesit-node-next-sibling node))
         (setq node nil)
         ))))
@@ -106,7 +106,7 @@
 
 (defvar structlog--buffer-name "*structured-log*")
 (defvar structlog--timer nil)
-(defvar structlog--timer-delay 1)
+(defvar structlog--timer-delay 0.5)
 (defvar structlog--prev-line nil)
 (defvar structlog--truncate-lines-original-value nil)
 (make-variable-buffer-local 'structlog--truncate-lines)
