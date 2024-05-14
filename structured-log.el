@@ -34,6 +34,7 @@
 ;;; Code:
 
 (require 'json-ts-mode)
+(require 'json)
 (require 'treesit)
 
 (defvar structlog--to-hide '("{" "}" "[" "]" "\"" ":" ","))
@@ -96,7 +97,6 @@
 ;;     map)
 ;;   "Keymap for `structured-log-mode'.")
 
-;; define a buffer local var to store the hidden nodes
 (defvar structlog--currently-hidding nil)
 (make-variable-buffer-local 'structlog--currently-hidding)
 
@@ -104,11 +104,12 @@
   "Adapter of `structlog-hide-nodes-in-window', WINDOW & START are not used."
   (structlog-hide-nodes-in-window structlog--currently-hidding))
 
-;; side window
 (defvar structlog--buffer-name "*structured-log*")
 (defvar structlog--timer nil)
 (defvar structlog--timer-delay 1)
 (defvar structlog--prev-line nil)
+(defvar structlog--truncate-lines-original-value nil)
+(make-variable-buffer-local 'structlog--truncate-lines)
 
 (defun structlog--get-buffer-create ()
   "Get the structured log buffer."
@@ -128,6 +129,7 @@
       (with-current-buffer (structlog--get-buffer-create)
         (erase-buffer)
         (insert line)
+        (json-pretty-print-buffer)
         ))
     ))
 
@@ -144,7 +146,7 @@
           (run-with-idle-timer structlog--timer-delay
                                t
                                #'structlog--update-buffer))
-  )
+    )
 
 ;;;###autoload
 (define-minor-mode structured-log-mode
@@ -157,10 +159,13 @@
   (display-buffer-in-side-window (structlog--get-buffer-create)
                                  '((side . right)))
   (if structured-log-mode
-      (structlog--start-timer)
-    (structlog--cancel-timer))
-
-  )
+      (progn
+        (structlog--start-timer)
+        (setq structlog--truncate-lines-original-value truncate-lines)
+        (toggle-truncate-lines t))
+    (structlog--cancel-timer)
+    (toggle-truncate-lines structlog--truncate-lines-original-value)
+    ))
 
 (provide 'structured-log)
 ;;; structured-log.el ends here
