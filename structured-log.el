@@ -58,7 +58,7 @@
         (overlay-put overlay 'invisible t)
         (overlay-put overlay 'intangible t)
         (overlay-put overlay 'evaporate t)
-        (overlay-put overlay 'before-string "")
+        (overlay-put overlay 'before-string " ")
         (overlay-put overlay 'category structlog--overlay)
         )))
 
