@@ -4,7 +4,7 @@
 ;; Maintainer: Fang Lungang
 ;; Created: 2024
 ;; Version: 0.0.1
-;; Package-Requires: ((emacs "29.2"))
+;; Package-Requires: ((emacs "29.2") json-ts-mode treesit)
 ;; Keywords: tree-sitter, treesit, log, json
 
 ;; This file is not part of GNU Emacs.
@@ -33,6 +33,7 @@
 
 ;;; Code:
 
+(require 'json-ts-mode)
 (require 'treesit)
 
 (defvar structlog--to-hide '("{" "}" "[" "]" "\"" ":" ","))
@@ -40,11 +41,10 @@
 
 (defun structlog--get-overlay (node)
   "Get the structured log overlay of the NODE."
-  (delq nil
-        (mapcar (lambda (overlay)
-                  (and (member structlog--overlay (overlay-properties overlay))
-                       overlay))
-                (overlays-in (treesit-node-start node) (treesit-node-end node)))))
+  (delq nil (mapcar
+             (lambda (overlay) (and (member structlog--overlay
+                                   (overlay-properties overlay)) overlay))
+             (overlays-in (treesit-node-start node) (treesit-node-end node)))))
 
 (defun structlog--hide-node (node)
     "Hide the NODE."
@@ -74,7 +74,7 @@
   "The default predicate function to determine if NODE should be hidden."
     (or (string-equal (treesit-node-field-name node) "key")
                      (member (treesit-node-type node) structlog--to-hide)))
-   
+
 (defun structlog-hide-nodes-in-window (hide)
   "Hide all the nodes in the current window if HIDE is non-nil, else show them."
   (let* ((root (treesit-buffer-root-node))
@@ -104,6 +104,49 @@
   "Adapter of `structlog-hide-nodes-in-window', WINDOW & START are not used."
   (structlog-hide-nodes-in-window structlog--currently-hidding))
 
+;; side window
+(defvar structlog--buffer-name "*structured-log*")
+(defvar structlog--timer nil)
+(defvar structlog--timer-delay 1)
+(defvar structlog--prev-line nil)
+
+(defun structlog--get-buffer-create ()
+  "Get the structured log buffer."
+  (or (get-buffer structlog--buffer-name)
+      (let ((buffer (get-buffer-create structlog--buffer-name)))
+        (with-current-buffer buffer (json-ts-mode))
+        buffer)))
+
+(defun structlog--update-buffer ()
+  "Update the structured log buffer."
+  (let* ((beg (line-beginning-position))
+         (end (line-end-position))
+         (line (buffer-substring-no-properties beg end))
+         )
+    (unless (equal line structlog--prev-line)
+      (setq structlog--prev-line line)
+      (with-current-buffer (structlog--get-buffer-create)
+        (erase-buffer)
+        (insert line)
+        ))
+    ))
+
+(defun structlog--cancel-timer ()
+  "Stop the structured log timer."
+  (when structlog--timer
+    (cancel-timer structlog--timer)
+    (setq structlog--timer nil)
+     ))
+
+(defun structlog--start-timer ()
+  "Start the structured log timer."
+    (setq structlog--timer
+          (run-with-idle-timer structlog--timer-delay
+                               t
+                               #'structlog--update-buffer))
+  )
+
+;;;###autoload
 (define-minor-mode structured-log-mode
   "A simple minor mode."
   :global nil
@@ -111,6 +154,12 @@
   (setq structlog--currently-hidding structured-log-mode)
   (structlog-hide-nodes-in-window structlog--currently-hidding)
   (add-hook 'window-scroll-functions 'structlog--after-scroll 100 t)
+  (display-buffer-in-side-window (structlog--get-buffer-create)
+                                 '((side . right)))
+  (if structured-log-mode
+      (structlog--start-timer)
+    (structlog--cancel-timer))
+
   )
 
 (provide 'structured-log)
