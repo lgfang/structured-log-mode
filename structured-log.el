@@ -90,15 +90,25 @@
         (setq node nil)
         ))))
 
-;; (defvar structured-log-mode-map
-;;   (let ((map (make-sparse-keymap)))
-;;     (define-key map (kbd "C-c C-h") 'structlog-hide)
-;;     (define-key map (kbd "C-c C-s") 'structlog-show)
-;;     map)
-;;   "Keymap for `structured-log-mode'.")
-
 (defvar structlog--currently-hidding nil)
 (make-variable-buffer-local 'structlog--currently-hidding)
+
+(defun structlog-hide ()
+  (interactive)
+  (setq structlog--currently-hidding t)
+  (structlog-hide-nodes-in-window structlog--currently-hidding))
+
+(defun structlog-show ()
+  (interactive)
+  (setq structlog--currently-hidding nil)
+  (structlog-hide-nodes-in-window structlog--currently-hidding))
+
+(defvar structured-log-mode-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "C-c C-h") 'structlog-hide)
+    (define-key map (kbd "C-c C-s") 'structlog-show)
+    map)
+  "Keymap for `structured-log-mode'.")
 
 (defun structlog--after-scroll (window start)
   "Adapter of `structlog-hide-nodes-in-window', WINDOW & START are not used."
@@ -153,6 +163,8 @@
   "A simple minor mode."
   :global nil
   :lighter ""
+  :keymap structured-log-mode-map
+
   (setq structlog--currently-hidding structured-log-mode)
   (structlog-hide-nodes-in-window structlog--currently-hidding)
   (add-hook 'window-scroll-functions 'structlog--after-scroll 100 t)
