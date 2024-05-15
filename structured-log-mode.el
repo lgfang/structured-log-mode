@@ -76,6 +76,16 @@
     (or (string-equal (treesit-node-field-name node) "key")
                      (member (treesit-node-type node) structlog--to-hide)))
 
+(defun structlog--window-end ()
+  "Get the end of the current window."
+    (save-excursion
+      (goto-char (window-end nil t))
+      ;; window-end is not reliable when called in the `window-scroll-functions`
+      ;; hook. Hence move 1/5 window further down or to the buffer end.
+      (forward-line (/ (window-size nil nil) 5))
+      (line-beginning-position))
+  )
+
 (defun structlog-hide-nodes-in-window (hide)
   "Hide all the nodes in the current window if HIDE is non-nil, else show them."
   (let* ((root (treesit-buffer-root-node))
@@ -85,7 +95,7 @@
          )
     (while node
       (treesit-induce-sparse-tree node pred process-fn)
-      (if (< (treesit-node-end node) (window-end nil t))
+      (if (< (treesit-node-end node) (structlog--window-end))
           (setq node (treesit-node-next-sibling node))
         (setq node nil)
         ))))
@@ -167,7 +177,7 @@
 
 ;;;###autoload
 (define-minor-mode structured-log-mode
-  "A simple minor mode."
+  "Displays JSON lines in a more human-friendly format."
   :global nil
   :lighter ""
   :keymap structured-log-mode-map
