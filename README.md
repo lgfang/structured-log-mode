@@ -23,7 +23,8 @@ Below are screenshots of viewing a MongoDB log file without and with this mode.
 - Emacs 29.1 or later
 
   This package uses the Emacs built-in packages `treesit` and the
-  `json-ts-mode`, which are availabe since Emacs 29.1.
+  `json-ts-mode`, which are available since Emacs 29.1. Too double check if your
+  Emacs has built in `treesit` support, please evaluate `(treesit-available-p)`.
 
 ## Installation ##
 
