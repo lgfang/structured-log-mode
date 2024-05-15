@@ -94,11 +94,13 @@
 (make-variable-buffer-local 'structlog--currently-hidding)
 
 (defun structlog-hide ()
+  "Hide the keys etc."
   (interactive)
   (setq structlog--currently-hidding t)
   (structlog-hide-nodes-in-window structlog--currently-hidding))
 
 (defun structlog-show ()
+  "Show the original line."
   (interactive)
   (setq structlog--currently-hidding nil)
   (structlog-hide-nodes-in-window structlog--currently-hidding))
@@ -114,7 +116,8 @@
   "Adapter of `structlog-hide-nodes-in-window', WINDOW & START are not used."
   (structlog-hide-nodes-in-window structlog--currently-hidding))
 
-(defvar structlog--buffer-name "*structured-log*")
+(defvar structlog--main-buffer-name nil)
+(defvar structlog--side-buffer-name "*structured-log*")
 (defvar structlog--timer nil)
 (defvar structlog--timer-delay 0.5)
 (defvar structlog--prev-line nil)
@@ -123,25 +126,28 @@
 
 (defun structlog--get-buffer-create ()
   "Get the structured log buffer."
-  (or (get-buffer structlog--buffer-name)
-      (let ((buffer (get-buffer-create structlog--buffer-name)))
+  (or (get-buffer structlog--side-buffer-name)
+      (let ((buffer (get-buffer-create structlog--side-buffer-name)))
         (with-current-buffer buffer (json-ts-mode))
         buffer)))
 
-(defun structlog--update-buffer ()
+(defun structlog--update-side-buffer ()
   "Update the structured log buffer."
-  (let* ((beg (line-beginning-position))
-         (end (line-end-position))
-         (line (buffer-substring-no-properties beg end))
-         )
-    (unless (equal line structlog--prev-line)
-      (setq structlog--prev-line line)
-      (with-current-buffer (structlog--get-buffer-create)
-        (erase-buffer)
-        (insert line)
-        (json-pretty-print-buffer)
-        ))
-    ))
+  (when (eq (buffer-name) structlog--main-buffer-name)
+    ;; update side buffer only when the main buffer is the current buffer
+    (let* ((beg (line-beginning-position))
+           (end (line-end-position))
+           (line (buffer-substring-no-properties beg end))
+           )
+      (unless (equal line structlog--prev-line)
+        (setq structlog--prev-line line)
+        (with-current-buffer (structlog--get-buffer-create)
+          (erase-buffer)
+          (insert line)
+          (json-pretty-print-buffer)
+          ))
+      ))
+  )
 
 (defun structlog--cancel-timer ()
   "Stop the structured log timer."
@@ -155,7 +161,8 @@
     (setq structlog--timer
           (run-with-idle-timer structlog--timer-delay
                                t
-                               #'structlog--update-buffer))
+                               #'structlog--update-side-buffer))
+    (add-hook 'kill-buffer-hook 'structlog--cancel-timer nil t)
     )
 
 ;;;###autoload
@@ -172,11 +179,17 @@
                                  '((side . right)))
   (if structured-log-mode
       (progn
-        (structlog--start-timer)
+        (setq structlog--main-buffer-name (buffer-name))
         (setq structlog--truncate-lines-original-value truncate-lines)
-        (toggle-truncate-lines t))
-    (structlog--cancel-timer)
+        (toggle-truncate-lines t)
+        (structlog--start-timer)
+        )
+
     (toggle-truncate-lines structlog--truncate-lines-original-value)
+    (let ((side-window (get-buffer-window structlog--side-buffer-name)))
+      (when side-window (delete-window side-window)))
+    (structlog--cancel-timer)
+    (setq structlog--main-buffer-name nil)
     ))
 
 (provide 'structured-log)
