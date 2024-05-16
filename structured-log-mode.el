@@ -92,11 +92,39 @@
 (defvar structlog--prev-end 0 "The previous window \"end\".")
 (make-variable-buffer-local 'structlog--prev-end)
 
+(defvar structlog--our-parser nil "The parser created by us.")
+(make-variable-buffer-local 'structlog--our-parser)
+
+(defun structlog--update-parser-range (ranges)
+  "Set RANGES for our own parser, which is a list of cons cells.
+
+Setting range allows us to handle huge files. If there is already
+a JSON parser, then the file isn't that big. Don't bother with
+range."
+  (when structlog--our-parser
+    (treesit-parser-set-included-ranges structlog--our-parser ranges)))
+
+(defun structlog--create-parser-if-needed ()
+  "Create a parser if needed."
+  (unless (delq nil (mapcar
+                     (lambda (parser)
+                       (when (eq (treesit-parser-language parser) 'json) parser))
+                     (treesit-parser-list)))
+    (setq structlog--our-parser (treesit-parser-create 'json))))
+
+
 (defun structlog--hide-nodes-in-window (hide)
   "HIDE or show all the nodes in the current window."
   (let* ((pred #'structlog--should-hide)
          (process-fn (if hide #'structlog--hide-node #'structlog--show-node))
+         (range-begin (window-start))
+         ;; Treesit parser is quick and lazy, don't bother to get the accurate
+         ;; range, just set it to 256KB from the window start.
+         (range-end (min (+ (window-start) (* 1024 256)) (point-max)))
          )
+
+    (structlog--update-parser-range (list (cons range-begin range-end)))
+
     ;; process the delta at the top of the window
     (let* ((start (window-start))
            (node (treesit-node-first-child-for-pos (treesit-buffer-root-node)
@@ -215,6 +243,7 @@
   :lighter ""
   :keymap structured-log-mode-map
 
+  (structlog--create-parser-if-needed)
   (setq structlog--currently-hidding structured-log-mode)
   (structlog--hide-nodes-in-window structlog--currently-hidding)
   (add-hook 'window-scroll-functions 'structlog--after-scroll 100 t)
