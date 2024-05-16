@@ -35,7 +35,7 @@ Below are screenshots of viewing a MongoDB log file without and with this mode.
     If you are using `use-package`, you can add the following code to your init
     file:
 
-        ```elisp
+        ``` emacs-lisp
         (use-package structured-log-mode
           :load-path "/path/to/structured-log-mode"
           :commands structured-log-mode)
@@ -51,10 +51,9 @@ Below are screenshots of viewing a MongoDB log file without and with this mode.
     If you are not using `use-package`, please add the following code to your
     init file:
 
-        ```elisp
+        ``` emacs-lisp
         (add-to-list 'load-path "/path/to/structured-log-mode")
         (require 'structured-log-mode)
-
         ```
 
 3. If haven't done yet, install the corresponding tree-sitter grammar by running
@@ -62,14 +61,45 @@ Below are screenshots of viewing a MongoDB log file without and with this mode.
 
 4. Restart Emacs or run `M-x load-file` on your init file.
 
+### Large Files ###
+
+This mode processes the contents in the current window only. Hence, it is able
+to handle large files. On my laptop, **after disabling any features which could
+potentially slow down Emacs**, at the least, it is able to handle a 1GB `mongod`
+log file without issues.
+
+I put the following configuration in my `init.el` to ensure that Emacs loads
+large files with minimal features to prevent Emacs from slowing or freezing.
+
+``` emacs-lisp
+  (defun lgf-huge-file-hook ()
+    "Open huge files with minimum features.
+
+Huge files (normally log files) can make Emacs sluggish or even
+freeze. This hook tells Emacs to open such files with the
+`fundamental-mode' and turn off any extra features which cannot
+handle large files. In addition, it makes the buffer read only to
+avoid accidental modifications."
+    (when (> (buffer-size) (* 1024 1024 16)) ; 16 MB
+      (fundamental-mode)
+      (buffer-disable-undo)
+      (which-function-mode -1)
+      (if (fboundp 'highlight-parentheses-mode) (highlight-parentheses-mode -1))
+      (setq buffer-read-only t)
+      ))
+  (add-hook 'find-file-hook 'lgf-huge-file-hook)
+```
+
 ## Usage ##
 
-1. Open a log file that is formatted as JSON Lines. If its major mode is not
-   `json-ts-mode`, run `M-x json-ts-mode` to enable it.
+1. Open a log file that is formatted as JSON Lines.
 
 2. Enable the `structured-log-mode` by running `M-x structured-log-mode`.
 
 3. The log file should now be displayed in a more human-friendly format.
+
+   *Note* If some lines in the window are not processed, please press `Ctrl-l`
+   (or evaluate `(recenter-top-bottom)`) to refresh.
 
 4. Move the cursor to a line to see the corresponding JSON data in the side
    window.
@@ -79,14 +109,14 @@ Below are screenshots of viewing a MongoDB log file without and with this mode.
 
 6. Run `M-x structured-log-mode` again to disable the mode.
 
+
 ## Customization ##
 
-None at the moment.
+- `structlog-timer-delay` - the idle time (delay in seconds) before updating the
+  side window.
 
 ## TODO ##
 
-- [ ] Investigate if `json-ts-mode` parse the whole file all at once. If so,
-  remove the dependency on it to avoid performance issues for large files.
 - [ ] Better whitespace handling.
 - [ ] Highlight according to log level.
 - [ ] Add customization options.
