@@ -81,8 +81,9 @@
     (save-excursion
       (goto-char (window-end nil t))
       ;; window-end is not reliable when called in the `window-scroll-functions`
-      ;; hook. Hence move 1/5 window further down or to the buffer end.
-      (forward-line (/ (window-size nil nil) 5))
+      ;; hook. Hence move 1/5 window (or at least 10 lines, if the window is
+      ;; really short) further down or to the buffer end.
+      (forward-line (max (/ (window-size nil nil) 5) 10))
       (line-beginning-position))
   )
 
