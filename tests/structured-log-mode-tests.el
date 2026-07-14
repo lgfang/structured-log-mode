@@ -76,5 +76,60 @@ Positions: 1={ 2-4=\"a\" 5=: 6=1 7=}   10-12=\"b\" 14=\" 15=x 16=\""
                                   'display structlog--replacement))
    (should (equal (get-text-property 6 'display) "FOREIGN"))))
 
+(ert-deftest structlog-test-multi-buffer-timer-lifecycle ()
+  "The shared timer survives until the last mode buffer disables."
+  (let ((buf1 (generate-new-buffer " *structlog-1*"))
+        (buf2 (generate-new-buffer " *structlog-2*")))
+    (unwind-protect
+        (cl-letf (((symbol-function 'display-buffer-in-side-window)
+                   #'ignore))
+          (with-current-buffer buf1
+            (insert "{\"a\":1}\n") (structured-log-mode 1))
+          (with-current-buffer buf2
+            (insert "{\"b\":2}\n") (structured-log-mode 1))
+          (should structlog--timer)
+          (with-current-buffer buf1 (structured-log-mode -1))
+          (should structlog--timer)     ; buf2 still needs it
+          (should (buffer-local-value 'structured-log-mode buf2))
+          (with-current-buffer buf2 (structured-log-mode -1))
+          (should-not structlog--timer))
+      (kill-buffer buf1)
+      (kill-buffer buf2))))
+
+(ert-deftest structlog-test-truncate-restored-per-buffer ()
+  "Each buffer restores its own original truncate-lines value."
+  (let ((buf1 (generate-new-buffer " *structlog-1*"))
+        (buf2 (generate-new-buffer " *structlog-2*")))
+    (unwind-protect
+        (cl-letf (((symbol-function 'display-buffer-in-side-window)
+                   #'ignore))
+          (with-current-buffer buf1
+            (insert "{\"a\":1}\n")
+            (setq truncate-lines nil)
+            (structured-log-mode 1))
+          (with-current-buffer buf2
+            (insert "{\"b\":2}\n")
+            (setq truncate-lines t)
+            (structured-log-mode 1))
+          (with-current-buffer buf1
+            (structured-log-mode -1)
+            (should-not truncate-lines))
+          (with-current-buffer buf2
+            (structured-log-mode -1)
+            (should truncate-lines)))
+      (kill-buffer buf1)
+      (kill-buffer buf2))))
+
+(ert-deftest structlog-test-killing-last-buffer-cancels-timer ()
+  "Killing a mode buffer (without disabling first) also releases the timer."
+  (let ((buf (generate-new-buffer " *structlog-kill*")))
+    (cl-letf (((symbol-function 'display-buffer-in-side-window) #'ignore))
+      (with-current-buffer buf
+        (insert "{\"a\":1}\n")
+        (structured-log-mode 1))
+      (should structlog--timer)
+      (kill-buffer buf)
+      (should-not structlog--timer))))
+
 (provide 'structured-log-mode-tests)
 ;;; structured-log-mode-tests.el ends here
