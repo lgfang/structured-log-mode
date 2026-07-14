@@ -131,5 +131,18 @@ Positions: 1={ 2-4=\"a\" 5=: 6=1 7=}   10-12=\"b\" 14=\" 15=x 16=\""
       (kill-buffer buf)
       (should-not structlog--timer))))
 
+(ert-deftest structlog-test-side-buffer-survives-malformed-json ()
+  "A non-JSON line must not signal; the side buffer shows it raw."
+  (structlog-tests--with-log-buffer
+   (structured-log-mode 1)
+   (goto-char (point-max))
+   (insert "not json at all\n")
+   (forward-line -1)                       ; point on the malformed line
+   (setq structlog--prev-line nil)
+   (structlog--update-side-buffer)         ; must not signal
+   (should (equal (with-current-buffer (structlog--get-buffer-create)
+                    (buffer-string))
+                  "not json at all"))))
+
 (provide 'structured-log-mode-tests)
 ;;; structured-log-mode-tests.el ends here

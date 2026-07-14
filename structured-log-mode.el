@@ -148,22 +148,21 @@ the region actually processed (extended to whole lines)."
         buffer)))
 
 (defun structlog--update-side-buffer ()
-  "Update the structured log buffer."
+  "Render the current line, pretty-printed, into the side buffer.
+Runs from the shared idle timer; does nothing unless the current
+buffer has `structured-log-mode' enabled.  Lines that fail to
+parse as JSON are shown raw."
   (when structured-log-mode
-    ;; update side buffer only when the current buffer has the mode enabled
-    (let* ((beg (line-beginning-position))
-           (end (line-end-position))
-           (line (buffer-substring-no-properties beg end))
-           )
+    (let ((line (buffer-substring-no-properties (line-beginning-position)
+                                                (line-end-position))))
       (unless (equal line structlog--prev-line)
         (setq structlog--prev-line line)
         (with-current-buffer (structlog--get-buffer-create)
           (erase-buffer)
           (insert line)
-          (json-pretty-print-buffer)
-          ))
-      ))
-  )
+          (condition-case nil
+              (json-pretty-print-buffer)
+            (error nil)))))))
 
 (defun structlog--ensure-timer ()
   "Start the shared idle timer unless it is already running."
