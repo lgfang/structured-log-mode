@@ -118,25 +118,11 @@ the region actually processed (extended to whole lines)."
             (setq node (treesit-node-next-sibling node))))))
     (cons 'jit-lock-bounds (cons beg end))))
 
-(defun structlog--hide-show (hide)
-  "Hide the keys etc. if HIDE is non-nil, else show them."
-  (setq structlog--hiding hide)
-  (jit-lock-refontify))
-
-(defun structlog-hide ()
-  "Hide the keys etc."
-  (interactive)
-  (structlog--hide-show t))
-
-(defun structlog-show ()
-  "Show the original line."
-  (interactive)
-  (structlog--hide-show nil))
-
 (defun structlog-toggle-hiding ()
   "Toggle hiding of JSON keys and punctuation."
   (interactive)
-  (structlog--hide-show (not structlog--hiding)))
+  (setq structlog--hiding (not structlog--hiding))
+  (jit-lock-refontify))
 
 (defvar structured-log-mode-map
   (let ((map (make-sparse-keymap)))
