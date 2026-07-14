@@ -1,10 +1,10 @@
-;;; structured-log.el --- view structured log messages
+;;; structured-log-mode.el --- View structured (JSON Lines) log files -*- lexical-binding: t; -*-
 
 ;; Author:  Fang Lungang <lungang.fang@mail.com>
 ;; Maintainer: Fang Lungang
 ;; Created: 2024
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "29.2") json-ts-mode treesit)
+;; Package-Requires: ((emacs "29.1"))
 ;; Keywords: tree-sitter, treesit, log, json
 
 ;; This file is not part of GNU Emacs.
@@ -190,7 +190,7 @@ range."
 (defvar structlog--timer nil)
 (defvar structlog--prev-line nil)
 (defvar structlog--truncate-lines-original-value nil)
-(make-variable-buffer-local 'structlog--truncate-lines)
+(make-variable-buffer-local 'structlog--truncate-lines-original-value)
 
 (defvar structlog-timer-delay 0.3
   "Delay (in seconds) before updating the side window.")
@@ -264,5 +264,5 @@ range."
     (setq structlog--main-buffer-name nil)
     ))
 
-(provide 'structured-log)
+(provide 'structured-log-mode)
 ;;; structured-log-mode.el ends here
