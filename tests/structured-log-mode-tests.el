@@ -10,20 +10,20 @@
 (require 'cl-lib)
 (require 'structured-log-mode)
 
-(ert-deftest structlog-test-feature-provided ()
+(ert-deftest structured-log-test-feature-provided ()
   "The file provides a feature matching its file name."
   (should (featurep 'structured-log-mode)))
 
-(ert-deftest structlog-test-truncate-save-is-buffer-local ()
+(ert-deftest structured-log-test-truncate-save-is-buffer-local ()
   "The saved truncate-lines value is buffer-local, not shared."
-  (should (local-variable-if-set-p 'structlog--truncate-lines-original-value)))
+  (should (local-variable-if-set-p 'structured-log--truncate-lines-original-value)))
 
-(defmacro structlog-tests--with-log-buffer (&rest body)
+(defmacro structured-log-tests--with-log-buffer (&rest body)
   "Run BODY in a temp buffer containing two JSON log lines.
 Point starts at buffer beginning; the buffer is shown in the
 selected window.  Side-window creation is stubbed out so tests
 work identically in batch mode."
-  `(let ((buf (generate-new-buffer " *structlog-test*")))
+  `(let ((buf (generate-new-buffer " *structured-log-test*")))
      (unwind-protect
          (with-current-buffer buf
            (insert "{\"a\":1}\n{\"b\":\"x\"}\n")
@@ -34,52 +34,52 @@ work identically in batch mode."
              ,@body))
        (when (buffer-live-p buf) (kill-buffer buf)))))
 
-(ert-deftest structlog-test-disable-tears-down ()
+(ert-deftest structured-log-test-disable-tears-down ()
   "Disabling the mode unregisters jit-lock, unhides text, restores settings."
-  (structlog-tests--with-log-buffer
+  (structured-log-tests--with-log-buffer
    (structured-log-mode 1)
    (should truncate-lines)
-   (structlog--jit-hide (point-min) (point-max))
-   (should (eq (get-text-property 1 'display) structlog--replacement))
+   (structured-log--jit-hide (point-min) (point-max))
+   (should (eq (get-text-property 1 'display) structured-log--replacement))
    (structured-log-mode -1)
-   (should-not (memq #'structlog--jit-hide jit-lock-functions))
+   (should-not (memq #'structured-log--jit-hide jit-lock-functions))
    (should-not truncate-lines)
-   (should-not structlog--timer)
-   (should-not structlog--our-parser)
+   (should-not structured-log--timer)
+   (should-not structured-log--our-parser)
    ;; every hidden char is visible again
    (should-not (text-property-any (point-min) (point-max)
-                                  'display structlog--replacement))))
+                                  'display structured-log--replacement))))
 
-(ert-deftest structlog-test-jit-hide-hides-keys-and-punctuation ()
+(ert-deftest structured-log-test-jit-hide-hides-keys-and-punctuation ()
   "Keys, quotes, braces, and colons get the display property; values don't.
 Buffer content: {\"a\":1}\\n{\"b\":\"x\"}\\n
 Positions: 1={ 2-4=\"a\" 5=: 6=1 7=}   10-12=\"b\" 14=\" 15=x 16=\""
-  (structlog-tests--with-log-buffer
+  (structured-log-tests--with-log-buffer
    (structured-log-mode 1)
-   (structlog--jit-hide (point-min) (point-max))
+   (structured-log--jit-hide (point-min) (point-max))
    (dolist (hidden-pos '(1 2 3 4 5 7 10 14 16))
      (should (eq (get-text-property hidden-pos 'display)
-                 structlog--replacement)))
+                 structured-log--replacement)))
    (dolist (visible-pos '(6 15))
      (should-not (get-text-property visible-pos 'display)))))
 
-(ert-deftest structlog-test-jit-unhides-when-hiding-off ()
+(ert-deftest structured-log-test-jit-unhides-when-hiding-off ()
   "With hiding toggled off, the jit function strips our properties only."
-  (structlog-tests--with-log-buffer
+  (structured-log-tests--with-log-buffer
    ;; a foreign display property on the visible `1' must survive
    (put-text-property 6 7 'display "FOREIGN")
    (structured-log-mode 1)
-   (structlog--jit-hide (point-min) (point-max))
-   (setq structlog--hiding nil)
-   (structlog--jit-hide (point-min) (point-max))
+   (structured-log--jit-hide (point-min) (point-max))
+   (setq structured-log--hiding nil)
+   (structured-log--jit-hide (point-min) (point-max))
    (should-not (text-property-any (point-min) (point-max)
-                                  'display structlog--replacement))
+                                  'display structured-log--replacement))
    (should (equal (get-text-property 6 'display) "FOREIGN"))))
 
-(ert-deftest structlog-test-multi-buffer-timer-lifecycle ()
+(ert-deftest structured-log-test-multi-buffer-timer-lifecycle ()
   "The shared timer survives until the last mode buffer disables."
-  (let ((buf1 (generate-new-buffer " *structlog-1*"))
-        (buf2 (generate-new-buffer " *structlog-2*")))
+  (let ((buf1 (generate-new-buffer " *structured-log-1*"))
+        (buf2 (generate-new-buffer " *structured-log-2*")))
     (unwind-protect
         (cl-letf (((symbol-function 'display-buffer-in-side-window)
                    #'ignore))
@@ -87,19 +87,19 @@ Positions: 1={ 2-4=\"a\" 5=: 6=1 7=}   10-12=\"b\" 14=\" 15=x 16=\""
             (insert "{\"a\":1}\n") (structured-log-mode 1))
           (with-current-buffer buf2
             (insert "{\"b\":2}\n") (structured-log-mode 1))
-          (should structlog--timer)
+          (should structured-log--timer)
           (with-current-buffer buf1 (structured-log-mode -1))
-          (should structlog--timer)     ; buf2 still needs it
+          (should structured-log--timer)     ; buf2 still needs it
           (should (buffer-local-value 'structured-log-mode buf2))
           (with-current-buffer buf2 (structured-log-mode -1))
-          (should-not structlog--timer))
+          (should-not structured-log--timer))
       (kill-buffer buf1)
       (kill-buffer buf2))))
 
-(ert-deftest structlog-test-truncate-restored-per-buffer ()
+(ert-deftest structured-log-test-truncate-restored-per-buffer ()
   "Each buffer restores its own original truncate-lines value."
-  (let ((buf1 (generate-new-buffer " *structlog-1*"))
-        (buf2 (generate-new-buffer " *structlog-2*")))
+  (let ((buf1 (generate-new-buffer " *structured-log-1*"))
+        (buf2 (generate-new-buffer " *structured-log-2*")))
     (unwind-protect
         (cl-letf (((symbol-function 'display-buffer-in-side-window)
                    #'ignore))
@@ -120,45 +120,45 @@ Positions: 1={ 2-4=\"a\" 5=: 6=1 7=}   10-12=\"b\" 14=\" 15=x 16=\""
       (kill-buffer buf1)
       (kill-buffer buf2))))
 
-(ert-deftest structlog-test-killing-last-buffer-cancels-timer ()
+(ert-deftest structured-log-test-killing-last-buffer-cancels-timer ()
   "Killing a mode buffer (without disabling first) also releases the timer."
-  (let ((buf (generate-new-buffer " *structlog-kill*")))
+  (let ((buf (generate-new-buffer " *structured-log-kill*")))
     (cl-letf (((symbol-function 'display-buffer-in-side-window) #'ignore))
       (with-current-buffer buf
         (insert "{\"a\":1}\n")
         (structured-log-mode 1))
-      (should structlog--timer)
+      (should structured-log--timer)
       (kill-buffer buf)
-      (should-not structlog--timer))))
+      (should-not structured-log--timer))))
 
-(ert-deftest structlog-test-side-buffer-survives-malformed-json ()
+(ert-deftest structured-log-test-side-buffer-survives-malformed-json ()
   "A non-JSON line must not signal; the side buffer shows it raw."
-  (structlog-tests--with-log-buffer
+  (structured-log-tests--with-log-buffer
    (structured-log-mode 1)
    (goto-char (point-max))
    (insert "not json at all\n")
    (forward-line -1)                       ; point on the malformed line
-   (setq structlog--prev-line nil)
-   (structlog--update-side-buffer)         ; must not signal
-   (should (equal (with-current-buffer (structlog--get-buffer-create)
+   (setq structured-log--prev-line nil)
+   (structured-log--update-side-buffer)         ; must not signal
+   (should (equal (with-current-buffer (structured-log--get-buffer-create)
                     (buffer-string))
                   "not json at all"))))
 
-(ert-deftest structlog-test-toggle-hiding ()
+(ert-deftest structured-log-test-toggle-hiding ()
   "The toggle command flips hiding on and off."
-  (structlog-tests--with-log-buffer
+  (structured-log-tests--with-log-buffer
    (structured-log-mode 1)
-   (should structlog--hiding)
-   (structlog-toggle-hiding)
-   (should-not structlog--hiding)
-   (structlog-toggle-hiding)
-   (should structlog--hiding)))
+   (should structured-log--hiding)
+   (structured-log-toggle-hiding)
+   (should-not structured-log--hiding)
+   (structured-log-toggle-hiding)
+   (should structured-log--hiding)))
 
-(ert-deftest structlog-test-customs-exist ()
+(ert-deftest structured-log-test-customs-exist ()
   "User options are defined via defcustom."
-  (dolist (sym '(structlog-hide-node-types
-                 structlog-timer-delay
-                 structlog-side-window-side))
+  (dolist (sym '(structured-log-hide-node-types
+                 structured-log-timer-delay
+                 structured-log-side-window-side))
     (should (custom-variable-p sym))))
 
 (provide 'structured-log-mode-tests)

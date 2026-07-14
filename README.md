@@ -112,11 +112,11 @@ whichever one you are in.
 
 ## Customization ##
 
-- `structlog-hide-node-types` - tree-sitter node types to hide, in addition to
+- `structured-log-hide-node-types` - tree-sitter node types to hide, in addition to
   object keys.
-- `structlog-timer-delay` - the idle time (delay in seconds) before updating the
+- `structured-log-timer-delay` - the idle time (delay in seconds) before updating the
   side window.
-- `structlog-side-window-side` - which side of the frame shows the
+- `structured-log-side-window-side` - which side of the frame shows the
   pretty-printed log entry.
 
 ## TODO ##

@@ -41,117 +41,117 @@
 (defgroup structured-log nil
   "View JSON Lines log files in a human-friendly way."
   :group 'tools
-  :prefix "structlog-")
+  :prefix "structured-log-")
 
-(defcustom structlog-hide-node-types '("{" "}" "[" "]" "\"" ":" ",")
+(defcustom structured-log-hide-node-types '("{" "}" "[" "]" "\"" ":" ",")
   "Tree-sitter node types to hide, in addition to object keys."
   :type '(repeat string))
 
-(defcustom structlog-side-window-side 'right
+(defcustom structured-log-side-window-side 'right
   "Which side of the frame shows the pretty-printed log entry."
   :type '(choice (const left) (const right) (const top) (const bottom)))
 
-(defconst structlog--replacement " "
+(defconst structured-log--replacement " "
   "Display string for hidden syntax.
 A single shared object: adjacent hidden nodes get `eq' display
 values, so each run of hidden text renders as one space.")
 
-(defun structlog--hide-node (node)
+(defun structured-log--hide-node (node)
   "Display NODE as a space via a text property."
   (put-text-property (treesit-node-start node) (treesit-node-end node)
-                     'display structlog--replacement))
+                     'display structured-log--replacement))
 
-(defun structlog--unhide-region (beg end)
+(defun structured-log--unhide-region (beg end)
   "Remove our display properties between BEG and END.
 Display properties set by other packages are left alone."
   (let ((pos beg))
     (while (< pos end)
       (let ((next (next-single-property-change pos 'display nil end)))
-        (when (eq (get-text-property pos 'display) structlog--replacement)
+        (when (eq (get-text-property pos 'display) structured-log--replacement)
           (remove-text-properties pos next '(display nil)))
         (setq pos next)))))
 
-(defun structlog--should-hide (node)
+(defun structured-log--should-hide (node)
   "The default predicate function to determine if NODE should be hidden."
     (or (string-equal (treesit-node-field-name node) "key")
-                     (member (treesit-node-type node) structlog-hide-node-types)))
+                     (member (treesit-node-type node) structured-log-hide-node-types)))
 
-(defvar-local structlog--our-parser nil "The parser created by us.")
+(defvar-local structured-log--our-parser nil "The parser created by us.")
 
-(defun structlog--update-parser-range (ranges)
+(defun structured-log--update-parser-range (ranges)
   "Set RANGES for our own parser, which is a list of cons cells.
 
 Setting range allows us to handle huge files. If there is already
 a JSON parser, then the file isn't that big. Don't bother with
 range."
-  (when structlog--our-parser
-    (treesit-parser-set-included-ranges structlog--our-parser ranges)))
+  (when structured-log--our-parser
+    (treesit-parser-set-included-ranges structured-log--our-parser ranges)))
 
-(defun structlog--create-parser-if-needed ()
+(defun structured-log--create-parser-if-needed ()
   "Create a parser if needed."
   (unless (delq nil (mapcar
                      (lambda (parser)
                        (when (eq (treesit-parser-language parser) 'json) parser))
                      (treesit-parser-list)))
-    (setq structlog--our-parser (treesit-parser-create 'json))))
+    (setq structured-log--our-parser (treesit-parser-create 'json))))
 
 
-(defvar-local structlog--hiding nil
+(defvar-local structured-log--hiding nil
   "Non-nil when JSON keys and punctuation are being hidden.")
 
-(defun structlog--jit-hide (beg end)
+(defun structured-log--jit-hide (beg end)
   "Hide JSON keys and punctuation between BEG and END.
-Registered with `jit-lock-register'.  When `structlog--hiding' is
+Registered with `jit-lock-register'.  When `structured-log--hiding' is
 nil, unhides the region instead.  Returns the jit-lock bounds of
 the region actually processed (extended to whole lines)."
   (let ((beg (save-excursion (goto-char beg) (line-beginning-position)))
         (end (save-excursion (goto-char end) (line-end-position))))
     (with-silent-modifications
-      (structlog--unhide-region beg end)
-      (when structlog--hiding
-        (structlog--update-parser-range (list (cons beg end)))
+      (structured-log--unhide-region beg end)
+      (when structured-log--hiding
+        (structured-log--update-parser-range (list (cons beg end)))
         (let ((node (treesit-node-first-child-for-pos
                      (treesit-buffer-root-node) beg)))
           (while (and node (< (treesit-node-start node) end))
             (treesit-induce-sparse-tree
-             node #'structlog--should-hide #'structlog--hide-node)
+             node #'structured-log--should-hide #'structured-log--hide-node)
             (setq node (treesit-node-next-sibling node))))))
     (cons 'jit-lock-bounds (cons beg end))))
 
-(defun structlog-toggle-hiding ()
+(defun structured-log-toggle-hiding ()
   "Toggle hiding of JSON keys and punctuation."
   (interactive)
-  (setq structlog--hiding (not structlog--hiding))
+  (setq structured-log--hiding (not structured-log--hiding))
   (jit-lock-refontify))
 
 (defvar structured-log-mode-map
   (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "C-c .") #'structlog-toggle-hiding)
+    (define-key map (kbd "C-c .") #'structured-log-toggle-hiding)
     map)
   "Keymap for `structured-log-mode'.")
 
-(defvar structlog--side-buffer-name "*structured-log*")
-(defvar structlog--timer nil
+(defvar structured-log--side-buffer-name "*structured-log*")
+(defvar structured-log--timer nil
   "Shared idle timer updating the side buffer; one for all mode buffers.")
-(defvar structlog--prev-line nil
+(defvar structured-log--prev-line nil
   "The line content currently rendered in the shared side buffer.")
-(defvar-local structlog--truncate-lines-original-value nil
+(defvar-local structured-log--truncate-lines-original-value nil
   "Value of `truncate-lines' before the mode was enabled, per buffer.")
 
-(defcustom structlog-timer-delay 0.3
+(defcustom structured-log-timer-delay 0.3
   "Idle delay (in seconds) before updating the side window."
   :type 'number)
 
-(defun structlog--get-buffer-create ()
+(defun structured-log--get-buffer-create ()
   "Get the structured log buffer."
-  (or (get-buffer structlog--side-buffer-name)
-      (let ((buffer (get-buffer-create structlog--side-buffer-name)))
+  (or (get-buffer structured-log--side-buffer-name)
+      (let ((buffer (get-buffer-create structured-log--side-buffer-name)))
         (with-current-buffer buffer (json-ts-mode))
         buffer)))
 
 (defvar structured-log-mode)            ; defined by `define-minor-mode' below
 
-(defun structlog--update-side-buffer ()
+(defun structured-log--update-side-buffer ()
   "Render the current line, pretty-printed, into the side buffer.
 Runs from the shared idle timer; does nothing unless the current
 buffer has `structured-log-mode' enabled.  Lines that fail to
@@ -159,24 +159,24 @@ parse as JSON are shown raw."
   (when structured-log-mode
     (let ((line (buffer-substring-no-properties (line-beginning-position)
                                                 (line-end-position))))
-      (unless (equal line structlog--prev-line)
-        (setq structlog--prev-line line)
-        (with-current-buffer (structlog--get-buffer-create)
+      (unless (equal line structured-log--prev-line)
+        (setq structured-log--prev-line line)
+        (with-current-buffer (structured-log--get-buffer-create)
           (erase-buffer)
           (insert line)
           (condition-case nil
               (json-pretty-print-buffer)
             (error nil)))))))
 
-(defun structlog--ensure-timer ()
+(defun structured-log--ensure-timer ()
   "Start the shared idle timer unless it is already running."
-  (unless structlog--timer
-    (setq structlog--timer
-          (run-with-idle-timer structlog-timer-delay t
-                               #'structlog--update-side-buffer))))
+  (unless structured-log--timer
+    (setq structured-log--timer
+          (run-with-idle-timer structured-log-timer-delay t
+                               #'structured-log--update-side-buffer))))
 
-(defun structlog--teardown-shared-maybe ()
-  "Release shared resources when this is the last structlog buffer.
+(defun structured-log--teardown-shared-maybe ()
+  "Release shared resources when this is the last structured-log buffer.
 Cancels the idle timer and deletes the side window unless some
 other live buffer still has `structured-log-mode' enabled.  Safe
 to call from the mode's disable path and from `kill-buffer-hook'
@@ -185,10 +185,10 @@ to call from the mode's disable path and from `kill-buffer-hook'
                       (and (not (eq buf (current-buffer)))
                            (buffer-local-value 'structured-log-mode buf)))
                     (buffer-list))
-    (when structlog--timer
-      (cancel-timer structlog--timer)
-      (setq structlog--timer nil))
-    (let ((side-window (get-buffer-window structlog--side-buffer-name)))
+    (when structured-log--timer
+      (cancel-timer structured-log--timer)
+      (setq structured-log--timer nil))
+    (let ((side-window (get-buffer-window structured-log--side-buffer-name)))
       (when side-window (delete-window side-window)))))
 
 ;;;###autoload
@@ -200,24 +200,24 @@ to call from the mode's disable path and from `kill-buffer-hook'
 
   (if structured-log-mode
       (progn
-        (structlog--create-parser-if-needed)
-        (setq structlog--hiding t)
-        (jit-lock-register #'structlog--jit-hide)
-        (display-buffer-in-side-window (structlog--get-buffer-create)
-                                       `((side . ,structlog-side-window-side)))
-        (setq structlog--truncate-lines-original-value truncate-lines)
+        (structured-log--create-parser-if-needed)
+        (setq structured-log--hiding t)
+        (jit-lock-register #'structured-log--jit-hide)
+        (display-buffer-in-side-window (structured-log--get-buffer-create)
+                                       `((side . ,structured-log-side-window-side)))
+        (setq structured-log--truncate-lines-original-value truncate-lines)
         (setq truncate-lines t)
-        (structlog--ensure-timer)
-        (add-hook 'kill-buffer-hook #'structlog--teardown-shared-maybe nil t))
-    (jit-lock-unregister #'structlog--jit-hide)
+        (structured-log--ensure-timer)
+        (add-hook 'kill-buffer-hook #'structured-log--teardown-shared-maybe nil t))
+    (jit-lock-unregister #'structured-log--jit-hide)
     (with-silent-modifications
-      (structlog--unhide-region (point-min) (point-max)))
-    (when structlog--our-parser
-      (treesit-parser-delete structlog--our-parser)
-      (setq structlog--our-parser nil))
-    (setq truncate-lines structlog--truncate-lines-original-value)
-    (remove-hook 'kill-buffer-hook #'structlog--teardown-shared-maybe t)
-    (structlog--teardown-shared-maybe)))
+      (structured-log--unhide-region (point-min) (point-max)))
+    (when structured-log--our-parser
+      (treesit-parser-delete structured-log--our-parser)
+      (setq structured-log--our-parser nil))
+    (setq truncate-lines structured-log--truncate-lines-original-value)
+    (remove-hook 'kill-buffer-hook #'structured-log--teardown-shared-maybe t)
+    (structured-log--teardown-shared-maybe)))
 
 (provide 'structured-log-mode)
 ;;; structured-log-mode.el ends here
