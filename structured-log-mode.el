@@ -38,59 +38,31 @@
 (require 'treesit)
 
 (defvar structlog--to-hide '("{" "}" "[" "]" "\"" ":" ","))
-(defvar structlog--overlay "structlog-overlay")
 
-(defun structlog--get-overlay (node)
-  "Get the structured log overlay of the NODE."
-  (delq nil (mapcar
-             (lambda (overlay) (and (member structlog--overlay
-                                   (overlay-properties overlay)) overlay))
-             (overlays-in (treesit-node-start node) (treesit-node-end node)))))
+(defconst structlog--replacement " "
+  "Display string for hidden syntax.
+A single shared object: adjacent hidden nodes get `eq' display
+values, so each run of hidden text renders as one space.")
 
 (defun structlog--hide-node (node)
-    "Hide the NODE."
-    (let* ((beg (treesit-node-start node))
-           (end (treesit-node-end node))
-           (overlay (if (structlog--get-overlay node) nil ; already hidden
-                      (make-overlay beg end)))
-           )
-      (when overlay
-        (overlay-put overlay 'invisible t)
-        (overlay-put overlay 'intangible t)
-        (overlay-put overlay 'evaporate t)
-        (overlay-put overlay 'before-string " ")
-        (overlay-put overlay 'category structlog--overlay)
-        )))
+  "Display NODE as a space via a text property."
+  (put-text-property (treesit-node-start node) (treesit-node-end node)
+                     'display structlog--replacement))
 
-(defun structlog--show-node (node)
-  "Show the NODE."
-  (interactive)
-  (let* ((begin (treesit-node-start node))
-         (end (treesit-node-end node))
-         (overlays (structlog--get-overlay node)))
-    (mapcar 'delete-overlay overlays)
-    ))
+(defun structlog--unhide-region (beg end)
+  "Remove our display properties between BEG and END.
+Display properties set by other packages are left alone."
+  (let ((pos beg))
+    (while (< pos end)
+      (let ((next (next-single-property-change pos 'display nil end)))
+        (when (eq (get-text-property pos 'display) structlog--replacement)
+          (remove-text-properties pos next '(display nil)))
+        (setq pos next)))))
 
 (defun structlog--should-hide (node)
   "The default predicate function to determine if NODE should be hidden."
     (or (string-equal (treesit-node-field-name node) "key")
                      (member (treesit-node-type node) structlog--to-hide)))
-
-(defun structlog--window-end ()
-  "Get the end of the current window."
-    (save-excursion
-      (goto-char (window-end nil t))
-      ;; window-end is not reliable when called in the `window-scroll-functions`
-      ;; hook. Hence move 1/5 window (or at least 10 lines, if the window is
-      ;; really short) further down or to the buffer end.
-      (forward-line (max (/ (window-size nil nil) 5) 10))
-      (line-beginning-position))
-  )
-
-(defvar structlog--prev-start 0 "The previous window start.")
-(make-variable-buffer-local 'structlog--prev-start)
-(defvar structlog--prev-end 0 "The previous window \"end\".")
-(make-variable-buffer-local 'structlog--prev-end)
 
 (defvar structlog--our-parser nil "The parser created by us.")
 (make-variable-buffer-local 'structlog--our-parser)
@@ -113,56 +85,32 @@ range."
     (setq structlog--our-parser (treesit-parser-create 'json))))
 
 
-(defun structlog--hide-nodes-in-window (hide)
-  "HIDE or show all the nodes in the current window."
-  (let* ((pred #'structlog--should-hide)
-         (process-fn (if hide #'structlog--hide-node #'structlog--show-node))
-         (range-begin (window-start))
-         ;; Treesit parser is quick and lazy, don't bother to get the accurate
-         ;; range, just set it to 256KB from the window start.
-         (range-end (min (+ (window-start) (* 1024 256)) (point-max)))
-         )
+(defvar-local structlog--hiding nil
+  "Non-nil when JSON keys and punctuation are being hidden.")
 
-    (structlog--update-parser-range (list (cons range-begin range-end)))
-
-    ;; process the delta at the top of the window
-    (let* ((start (window-start))
-           (node (treesit-node-first-child-for-pos (treesit-buffer-root-node)
-                                                   start))
-           )
-      (while (and node (<= (treesit-node-end node)
-                           (min structlog--prev-start
-                                (structlog--window-end))))
-        ;; must re-calculate the end in each loop as it changes after hiding
-        ;; some lines
-        (treesit-induce-sparse-tree node pred process-fn)
-        (setq node (treesit-node-next-sibling node)))
-      (setq structlog--prev-start start)
-      )
-
-    ;; process the delta at the bottom of the window
-    (let* ((start (max structlog--prev-end (window-start)))
-           (new-end (structlog--window-end))
-           (node (treesit-node-first-child-for-pos (treesit-buffer-root-node)
-                                                   start)))
-      (while (and node
-                  (< (treesit-node-end node) (setq new-end
-                                                   (structlog--window-end)))
-                  )
-        (treesit-induce-sparse-tree node pred process-fn)
-        (setq node (treesit-node-next-sibling node)))
-      (setq structlog--prev-end new-end)
-      )))
-
-(defvar structlog--currently-hidding nil)
-(make-variable-buffer-local 'structlog--currently-hidding)
+(defun structlog--jit-hide (beg end)
+  "Hide JSON keys and punctuation between BEG and END.
+Registered with `jit-lock-register'.  When `structlog--hiding' is
+nil, unhides the region instead.  Returns the jit-lock bounds of
+the region actually processed (extended to whole lines)."
+  (let ((beg (save-excursion (goto-char beg) (line-beginning-position)))
+        (end (save-excursion (goto-char end) (line-end-position))))
+    (with-silent-modifications
+      (structlog--unhide-region beg end)
+      (when structlog--hiding
+        (structlog--update-parser-range (list (cons beg end)))
+        (let ((node (treesit-node-first-child-for-pos
+                     (treesit-buffer-root-node) beg)))
+          (while (and node (< (treesit-node-start node) end))
+            (treesit-induce-sparse-tree
+             node #'structlog--should-hide #'structlog--hide-node)
+            (setq node (treesit-node-next-sibling node))))))
+    (cons 'jit-lock-bounds (cons beg end))))
 
 (defun structlog--hide-show (hide)
   "Hide the keys etc. if HIDE is non-nil, else show them."
-  (setq structlog--currently-hidding hide)
-  (setq structlog--prev-start 0)
-  (setq structlog--prev-end 0)
-  (structlog--hide-nodes-in-window structlog--currently-hidding))
+  (setq structlog--hiding hide)
+  (jit-lock-refontify))
 
 (defun structlog-hide ()
   "Hide the keys etc."
@@ -173,10 +121,6 @@ range."
   "Show the original line."
   (interactive)
   (structlog--hide-show nil))
-
-(defun structlog--after-scroll (window start)
-  "Adapter of `structlog-hide-nodes-in-window', WINDOW & START are not used."
-  (structlog--hide-nodes-in-window structlog--currently-hidding))
 
 (defvar structured-log-mode-map
   (let ((map (make-sparse-keymap)))
@@ -246,20 +190,17 @@ range."
   (if structured-log-mode
       (progn
         (structlog--create-parser-if-needed)
-        (setq structlog--currently-hidding t)
-        (setq structlog--prev-start 0)
-        (setq structlog--prev-end 0)
-        (structlog--hide-nodes-in-window t)
-        (add-hook 'window-scroll-functions 'structlog--after-scroll 100 t)
+        (setq structlog--hiding t)
+        (jit-lock-register #'structlog--jit-hide)
         (display-buffer-in-side-window (structlog--get-buffer-create)
                                        '((side . right)))
         (setq structlog--main-buffer-name (buffer-name))
         (setq structlog--truncate-lines-original-value truncate-lines)
         (setq truncate-lines t)
         (structlog--start-timer))
-    (remove-hook 'window-scroll-functions 'structlog--after-scroll t)
-    (setq structlog--currently-hidding nil)
-    (remove-overlays (point-min) (point-max) 'category structlog--overlay)
+    (jit-lock-unregister #'structlog--jit-hide)
+    (with-silent-modifications
+      (structlog--unhide-region (point-min) (point-max)))
     (when structlog--our-parser
       (treesit-parser-delete structlog--our-parser)
       (setq structlog--our-parser nil))
