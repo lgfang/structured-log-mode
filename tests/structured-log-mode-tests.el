@@ -144,5 +144,22 @@ Positions: 1={ 2-4=\"a\" 5=: 6=1 7=}   10-12=\"b\" 14=\" 15=x 16=\""
                     (buffer-string))
                   "not json at all"))))
 
+(ert-deftest structlog-test-toggle-hiding ()
+  "The toggle command flips hiding on and off."
+  (structlog-tests--with-log-buffer
+   (structured-log-mode 1)
+   (should structlog--hiding)
+   (structlog-toggle-hiding)
+   (should-not structlog--hiding)
+   (structlog-toggle-hiding)
+   (should structlog--hiding)))
+
+(ert-deftest structlog-test-customs-exist ()
+  "User options are defined via defcustom."
+  (dolist (sym '(structlog-hide-node-types
+                 structlog-timer-delay
+                 structlog-side-window-side))
+    (should (custom-variable-p sym))))
+
 (provide 'structured-log-mode-tests)
 ;;; structured-log-mode-tests.el ends here

@@ -20,25 +20,26 @@ Below are screenshots of viewing a MongoDB log file without and with this mode.
 
 ## Prerequisites ##
 
-- Emacs 29.1 or later
+- Emacs 30.1 or later
 
-  This package uses the Emacs built-in packages `treesit` and the
-  `json-ts-mode`, which are available since Emacs 29.1. Too double check if your
+  The installation instructions below use the `:vc` keyword of `use-package`,
+  which is available since Emacs 30.1. The package itself relies on the Emacs
+  built-in packages `treesit` and `json-ts-mode` (available since Emacs 29.1),
+  so Emacs 29.1 suffices if you install manually. To double check if your
   Emacs has built in `treesit` support, please evaluate `(treesit-available-p)`.
 
 ## Installation ##
 
-1. Git clone or download this repository.
+1. Edit your Emacs init file to install and load it.
 
-2. Edit your Emacs init file to load it.
-
-    If you are using `use-package`, you can add the following code to your init
-    file:
+    If you are using `use-package`, add the following code to your init file.
+    It installs the package directly from GitHub:
 
         ``` emacs-lisp
         (use-package structured-log-mode
-          :load-path "/path/to/structured-log-mode"
-          :commands structured-log-mode)
+          :vc (:url "https://github.com/lgfang/structured-log-mode" :rev :newest)
+          :commands structured-log-mode
+          )
 
         (use-package json-ts-mode
           :mode "\\.jsonl?\\'" "mongod*\\.log"
@@ -48,18 +49,18 @@ Below are screenshots of viewing a MongoDB log file without and with this mode.
     Note that the second `use-package` is optional. It tells Emacs to open
     MongoDB log files using `json-ts-mode`.
 
-    If you are not using `use-package`, please add the following code to your
-    init file:
+    If you are not using `use-package`, git clone or download this repository
+    and add the following code to your init file:
 
         ``` emacs-lisp
         (add-to-list 'load-path "/path/to/structured-log-mode")
         (require 'structured-log-mode)
         ```
 
-3. If haven't done yet, install the corresponding tree-sitter grammar by running
+2. If haven't done yet, install the corresponding tree-sitter grammar by running
    `M-x treesit-install-grammars` and selecting `json` from the list.
 
-4. Restart Emacs or run `M-x load-file` on your init file.
+3. Restart Emacs or run `M-x load-file` on your init file.
 
 ### Large Files ###
 
@@ -98,25 +99,28 @@ avoid accidental modifications."
 
 3. The log file should now be displayed in a more human-friendly format.
 
-   *Note* If some lines in the window are not processed, please press `Ctrl-l`
-   (or evaluate `(recenter-top-bottom)`) to refresh.
-
 4. Move the cursor to a line to see the corresponding JSON data in the side
    window.
 
-5. Press `c-c c-s` to show all the original contents. Press `c-s c-h` to hide
-   again.
+5. Press `C-c .` to toggle between the condensed and the original view.
 
 6. Run `M-x structured-log-mode` again to disable the mode.
+
+The mode can be enabled in several log buffers at once; the side window follows
+whichever one you are in.
 
 
 ## Customization ##
 
+- `structlog-hide-node-types` - tree-sitter node types to hide, in addition to
+  object keys.
 - `structlog-timer-delay` - the idle time (delay in seconds) before updating the
   side window.
+- `structlog-side-window-side` - which side of the frame shows the
+  pretty-printed log entry.
 
 ## TODO ##
 
 - [ ] Better whitespace handling.
 - [ ] Highlight according to log level.
-- [ ] Add customization options.
+- [x] Add customization options.

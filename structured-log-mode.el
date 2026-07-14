@@ -3,7 +3,7 @@
 ;; Author:  Fang Lungang <lungang.fang@mail.com>
 ;; Maintainer: Fang Lungang
 ;; Created: 2024
-;; Version: 0.1.0
+;; Version: 0.2.0
 ;; Package-Requires: ((emacs "29.1"))
 ;; Keywords: tree-sitter, treesit, log, json
 
@@ -38,7 +38,18 @@
 (require 'treesit)
 (require 'seq)
 
-(defvar structlog--to-hide '("{" "}" "[" "]" "\"" ":" ","))
+(defgroup structured-log nil
+  "View JSON Lines log files in a human-friendly way."
+  :group 'tools
+  :prefix "structlog-")
+
+(defcustom structlog-hide-node-types '("{" "}" "[" "]" "\"" ":" ",")
+  "Tree-sitter node types to hide, in addition to object keys."
+  :type '(repeat string))
+
+(defcustom structlog-side-window-side 'right
+  "Which side of the frame shows the pretty-printed log entry."
+  :type '(choice (const left) (const right) (const top) (const bottom)))
 
 (defconst structlog--replacement " "
   "Display string for hidden syntax.
@@ -63,7 +74,7 @@ Display properties set by other packages are left alone."
 (defun structlog--should-hide (node)
   "The default predicate function to determine if NODE should be hidden."
     (or (string-equal (treesit-node-field-name node) "key")
-                     (member (treesit-node-type node) structlog--to-hide)))
+                     (member (treesit-node-type node) structlog-hide-node-types)))
 
 (defvar-local structlog--our-parser nil "The parser created by us.")
 
@@ -122,10 +133,14 @@ the region actually processed (extended to whole lines)."
   (interactive)
   (structlog--hide-show nil))
 
+(defun structlog-toggle-hiding ()
+  "Toggle hiding of JSON keys and punctuation."
+  (interactive)
+  (structlog--hide-show (not structlog--hiding)))
+
 (defvar structured-log-mode-map
   (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "C-c C-h") 'structlog-hide)
-    (define-key map (kbd "C-c C-s") 'structlog-show)
+    (define-key map (kbd "C-c .") #'structlog-toggle-hiding)
     map)
   "Keymap for `structured-log-mode'.")
 
@@ -137,8 +152,9 @@ the region actually processed (extended to whole lines)."
 (defvar-local structlog--truncate-lines-original-value nil
   "Value of `truncate-lines' before the mode was enabled, per buffer.")
 
-(defvar structlog-timer-delay 0.3
-  "Delay (in seconds) before updating the side window.")
+(defcustom structlog-timer-delay 0.3
+  "Idle delay (in seconds) before updating the side window."
+  :type 'number)
 
 (defun structlog--get-buffer-create ()
   "Get the structured log buffer."
@@ -146,6 +162,8 @@ the region actually processed (extended to whole lines)."
       (let ((buffer (get-buffer-create structlog--side-buffer-name)))
         (with-current-buffer buffer (json-ts-mode))
         buffer)))
+
+(defvar structured-log-mode)            ; defined by `define-minor-mode' below
 
 (defun structlog--update-side-buffer ()
   "Render the current line, pretty-printed, into the side buffer.
@@ -200,7 +218,7 @@ to call from the mode's disable path and from `kill-buffer-hook'
         (setq structlog--hiding t)
         (jit-lock-register #'structlog--jit-hide)
         (display-buffer-in-side-window (structlog--get-buffer-create)
-                                       '((side . right)))
+                                       `((side . ,structlog-side-window-side)))
         (setq structlog--truncate-lines-original-value truncate-lines)
         (setq truncate-lines t)
         (structlog--ensure-timer)
