@@ -243,26 +243,31 @@ range."
   :lighter ""
   :keymap structured-log-mode-map
 
-  (structlog--create-parser-if-needed)
-  (setq structlog--currently-hidding structured-log-mode)
-  (structlog--hide-nodes-in-window structlog--currently-hidding)
-  (add-hook 'window-scroll-functions 'structlog--after-scroll 100 t)
-  (display-buffer-in-side-window (structlog--get-buffer-create)
-                                 '((side . right)))
   (if structured-log-mode
       (progn
+        (structlog--create-parser-if-needed)
+        (setq structlog--currently-hidding t)
+        (setq structlog--prev-start 0)
+        (setq structlog--prev-end 0)
+        (structlog--hide-nodes-in-window t)
+        (add-hook 'window-scroll-functions 'structlog--after-scroll 100 t)
+        (display-buffer-in-side-window (structlog--get-buffer-create)
+                                       '((side . right)))
         (setq structlog--main-buffer-name (buffer-name))
         (setq structlog--truncate-lines-original-value truncate-lines)
-        (toggle-truncate-lines t)
-        (structlog--start-timer)
-        )
-
-    (toggle-truncate-lines structlog--truncate-lines-original-value)
+        (setq truncate-lines t)
+        (structlog--start-timer))
+    (remove-hook 'window-scroll-functions 'structlog--after-scroll t)
+    (setq structlog--currently-hidding nil)
+    (remove-overlays (point-min) (point-max) 'category structlog--overlay)
+    (when structlog--our-parser
+      (treesit-parser-delete structlog--our-parser)
+      (setq structlog--our-parser nil))
+    (setq truncate-lines structlog--truncate-lines-original-value)
     (let ((side-window (get-buffer-window structlog--side-buffer-name)))
       (when side-window (delete-window side-window)))
     (structlog--cancel-timer)
-    (setq structlog--main-buffer-name nil)
-    ))
+    (setq structlog--main-buffer-name nil)))
 
 (provide 'structured-log-mode)
 ;;; structured-log-mode.el ends here
