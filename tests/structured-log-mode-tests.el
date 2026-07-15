@@ -161,5 +161,70 @@ Positions: 1={ 2-4=\"a\" 5=: 6=1 7=}   10-12=\"b\" 14=\" 15=x 16=\""
                  structured-log-side-window-side))
     (should (custom-variable-p sym))))
 
+(ert-deftest structured-log-test-level-highlighting ()
+  "Lines get whole-line faces per log level; disabling removes them.
+Buffer lines (20 chars each incl. newline): I at 1, W at 21, E at 41."
+  (let ((buf (generate-new-buffer " *structured-log-hl*")))
+    (unwind-protect
+        (with-current-buffer buf
+          (insert "{\"s\":\"I\",\"msg\":\"a\"}\n"
+                  "{\"s\":\"W\",\"msg\":\"b\"}\n"
+                  "{\"s\":\"E\",\"msg\":\"c\"}\n")
+          (goto-char (point-min))
+          (set-window-buffer (selected-window) buf)
+          (cl-letf (((symbol-function 'display-buffer-in-side-window)
+                     #'ignore))
+            (structured-log-mode 1)
+            (structured-log--jit-hide (point-min) (point-max))
+            (should-not (get-text-property 1 'face))         ; I: no highlight
+            (should (eq (get-text-property 21 'face) 'warning))
+            (should (eq (get-text-property 41 'face) 'error))
+            ;; highlight covers the whole line, not just the level field
+            (should (eq (get-text-property 39 'face) 'warning))
+            (structured-log-mode -1)
+            (should-not (get-text-property 21 'face))
+            (should-not (get-text-property 41 'face))))
+      (kill-buffer buf))))
+
+(ert-deftest structured-log-test-level-highlight-respects-custom-key ()
+  "The level is read from `structured-log-level-key'."
+  (let ((buf (generate-new-buffer " *structured-log-hl-key*"))
+        (structured-log-level-key "level"))
+    (unwind-protect
+        (with-current-buffer buf
+          (insert "{\"level\":\"E\",\"s\":\"I\"}\n")
+          (goto-char (point-min))
+          (set-window-buffer (selected-window) buf)
+          (cl-letf (((symbol-function 'display-buffer-in-side-window)
+                     #'ignore))
+            (structured-log-mode 1)
+            (structured-log--jit-hide (point-min) (point-max))
+            (should (eq (get-text-property 1 'face) 'error))
+            (structured-log-mode -1)))
+      (kill-buffer buf))))
+
+(ert-deftest structured-log-test-highlight-survives-font-lock ()
+  "Line faces survive a font-lock-style pass that strips `face'.
+Font-lock registers its jit-lock function before the mode is
+enabled and wipes the `face' property of the region it fontifies;
+our function must therefore run after it."
+  (let ((buf (generate-new-buffer " *structured-log-fl*")))
+    (unwind-protect
+        (with-current-buffer buf
+          (insert "{\"s\":\"W\",\"msg\":\"b\"}\n")
+          (goto-char (point-min))
+          (set-window-buffer (selected-window) buf)
+          (cl-letf (((symbol-function 'display-buffer-in-side-window)
+                     #'ignore))
+            ;; stand-in for `font-lock-fontify-region'
+            (add-hook 'jit-lock-functions
+                      (lambda (beg end)
+                        (remove-text-properties beg end '(face nil)))
+                      nil t)
+            (structured-log-mode 1)
+            (run-hook-with-args 'jit-lock-functions (point-min) (point-max))
+            (should (eq (get-text-property 1 'face) 'warning))))
+      (kill-buffer buf))))
+
 (provide 'structured-log-mode-tests)
 ;;; structured-log-mode-tests.el ends here

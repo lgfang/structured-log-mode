@@ -51,6 +51,16 @@
   "Which side of the frame shows the pretty-printed log entry."
   :type '(choice (const left) (const right) (const top) (const bottom)))
 
+(defcustom structured-log-level-key "s"
+  "JSON key whose value holds the log level of an entry."
+  :type 'string)
+
+(defcustom structured-log-level-faces
+  '(("W" . warning) ("E" . error) ("F" . error))
+  "Alist mapping log level values to faces used to highlight the line.
+Levels not listed here (e.g. \"I\") are not highlighted."
+  :type '(alist :key-type string :value-type face))
+
 (defconst structured-log--replacement " "
   "Display string for hidden syntax.
 A single shared object: adjacent hidden nodes get `eq' display
@@ -96,26 +106,65 @@ range."
     (setq structured-log--our-parser (treesit-parser-create 'json))))
 
 
+(defun structured-log--node-level (node)
+  "Return the log level string of the entry NODE, or nil if none.
+The level is the value of the `structured-log-level-key' member of
+NODE, with string quotes stripped."
+  (let ((key-text (concat "\"" structured-log-level-key "\"")))
+    (catch 'level
+      (dolist (pair (treesit-node-children node t))
+        (let ((key (treesit-node-child-by-field-name pair "key")))
+          (when (and key (equal (treesit-node-text key t) key-text))
+            (let* ((value (treesit-node-child-by-field-name pair "value"))
+                   (content (and value (treesit-node-child value 0 t))))
+              (throw 'level
+                     (and value (treesit-node-text (or content value) t))))))))))
+
+(defun structured-log--highlight-node (node)
+  "Apply the matching level face, if any, to the whole entry NODE."
+  (let* ((level (structured-log--node-level node))
+         (face (cdr (assoc level structured-log-level-faces))))
+    (when face
+      (let ((beg (treesit-node-start node))
+            (end (treesit-node-end node)))
+        (put-text-property beg end 'face face)
+        (put-text-property beg end 'structured-log--level-face face)))))
+
+(defun structured-log--unhighlight-region (beg end)
+  "Remove our level faces between BEG and END."
+  (let ((pos beg))
+    (while (< pos end)
+      (let ((next (next-single-property-change
+                   pos 'structured-log--level-face nil end)))
+        (when (get-text-property pos 'structured-log--level-face)
+          (remove-text-properties
+           pos next '(face nil structured-log--level-face nil)))
+        (setq pos next)))))
+
 (defvar-local structured-log--hiding nil
   "Non-nil when JSON keys and punctuation are being hidden.")
 
 (defun structured-log--jit-hide (beg end)
-  "Hide JSON keys and punctuation between BEG and END.
-Registered with `jit-lock-register'.  When `structured-log--hiding' is
-nil, unhides the region instead.  Returns the jit-lock bounds of
-the region actually processed (extended to whole lines)."
+  "Hide JSON syntax and highlight log levels between BEG and END.
+Registered with `jit-lock-register'.  Keys and punctuation are
+hidden only when `structured-log--hiding' is non-nil; log-level
+line highlighting is applied regardless.  Returns the jit-lock
+bounds of the region actually processed (extended to whole
+lines)."
   (let ((beg (save-excursion (goto-char beg) (line-beginning-position)))
         (end (save-excursion (goto-char end) (line-end-position))))
     (with-silent-modifications
       (structured-log--unhide-region beg end)
-      (when structured-log--hiding
-        (structured-log--update-parser-range (list (cons beg end)))
-        (let ((node (treesit-node-first-child-for-pos
-                     (treesit-buffer-root-node) beg)))
-          (while (and node (< (treesit-node-start node) end))
+      (structured-log--unhighlight-region beg end)
+      (structured-log--update-parser-range (list (cons beg end)))
+      (let ((node (treesit-node-first-child-for-pos
+                   (treesit-buffer-root-node) beg)))
+        (while (and node (< (treesit-node-start node) end))
+          (when structured-log--hiding
             (treesit-induce-sparse-tree
-             node #'structured-log--should-hide #'structured-log--hide-node)
-            (setq node (treesit-node-next-sibling node))))))
+             node #'structured-log--should-hide #'structured-log--hide-node))
+          (structured-log--highlight-node node)
+          (setq node (treesit-node-next-sibling node)))))
     (cons 'jit-lock-bounds (cons beg end))))
 
 (defun structured-log-toggle-hiding ()
@@ -203,6 +252,11 @@ to call from the mode's disable path and from `kill-buffer-hook'
         (structured-log--create-parser-if-needed)
         (setq structured-log--hiding t)
         (jit-lock-register #'structured-log--jit-hide)
+        ;; `jit-lock-register' prepends, so `font-lock-fontify-region'
+        ;; would run after us and wipe our level faces when it
+        ;; unfontifies; reposition ourselves to run last.
+        (remove-hook 'jit-lock-functions #'structured-log--jit-hide t)
+        (add-hook 'jit-lock-functions #'structured-log--jit-hide 99 t)
         (display-buffer-in-side-window (structured-log--get-buffer-create)
                                        `((side . ,structured-log-side-window-side)))
         (setq structured-log--truncate-lines-original-value truncate-lines)
@@ -211,7 +265,8 @@ to call from the mode's disable path and from `kill-buffer-hook'
         (add-hook 'kill-buffer-hook #'structured-log--teardown-shared-maybe nil t))
     (jit-lock-unregister #'structured-log--jit-hide)
     (with-silent-modifications
-      (structured-log--unhide-region (point-min) (point-max)))
+      (structured-log--unhide-region (point-min) (point-max))
+      (structured-log--unhighlight-region (point-min) (point-max)))
     (when structured-log--our-parser
       (treesit-parser-delete structured-log--our-parser)
       (setq structured-log--our-parser nil))

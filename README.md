@@ -118,9 +118,13 @@ whichever one you are in.
   side window.
 - `structured-log-side-window-side` - which side of the frame shows the
   pretty-printed log entry.
+- `structured-log-level-key` - the JSON key holding the log level of an entry
+  (default `"s"`, as used by MongoDB).
+- `structured-log-level-faces` - alist mapping log level values to the faces
+  used to highlight the whole line (default: `W` warning, `E`/`F` error;
+  unlisted levels such as `I` are not highlighted).
 
 ## TODO ##
 
 - [ ] Better whitespace handling.
-- [ ] Highlight according to log level.
-- [x] Add customization options.
+- [x] Highlight according to log level.
